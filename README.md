@@ -1,5 +1,7 @@
 # Connecting by SSL Sockets using self-signed certificates
 
+This library is developed to make [SSLContext](https://docs.oracle.com/javase/7/docs/api/javax/net/ssl/SSLContext.html) initialization easier. It may be used in Android applications as well. See more about self-signed SSL certificates and possible uses in IoT on [our blog](http://blog.blastlab.co/post/103564752561/security-in-iot).
+
 ## Creating certificate for server
 
 Our keystore will keep pair of public and private key. It can be generated with command: It can be generated with this sample command in /src/main/resources of our server application:
