@@ -1,9 +1,7 @@
 package co.blastlab.ssl;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -28,7 +26,13 @@ import javax.net.ssl.TrustManagerFactory;
 public class SSLContextInitializer {
 
 	private KeyManager[] keyManagers;
-	private TrustManager[] trustManagers;
+	private final KeyStore trustedKeystore;
+
+	public SSLContextInitializer() throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException {
+		String keyStoreType = KeyStore.getDefaultType();
+		trustedKeystore = KeyStore.getInstance(keyStoreType);
+		trustedKeystore.load(null, null);
+	}
 
 	/**
 	 * Sets keystore used by context.
@@ -36,7 +40,7 @@ public class SSLContextInitializer {
 	 * Initializing keystore is critial for using context initialized by {@link #initContext(SSLContext)}
 	 * to create {@link SSLServerSocket} or to connect by {@link SSLSocket} as client
 	 * but wit client authorization.
-	 * @param keystore Keystore .jks file.
+	 * @param keystoreIS Keystore Input Stream (.jks file format).
 	 * @param keystorePass Password to keystore.
 	 * @param certificatePass Password to certificate in keystore.
 	 * @throws java.security.KeyStoreException
@@ -45,15 +49,9 @@ public class SSLContextInitializer {
 	 * @throws java.security.NoSuchAlgorithmException
 	 * @throws java.security.UnrecoverableKeyException
 	 */
-	public void setKeystore(File keystore, String keystorePass, String certificatePass) throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, UnrecoverableKeyException {
+	public void setKeystore(InputStream keystoreIS, String keystorePass, String certificatePass) throws KeyStoreException, IOException, NoSuchAlgorithmException, CertificateException, UnrecoverableKeyException {
 		KeyStore ks = KeyStore.getInstance("JKS");
-
-		FileInputStream fis = new FileInputStream(keystore);
-		try {
-			ks.load(fis, keystorePass.toCharArray());
-		} finally {
-			fis.close();
-		}
+		ks.load(keystoreIS, keystorePass.toCharArray());
 
 		KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
 		kmf.init(ks, certificatePass.toCharArray());
@@ -61,53 +59,37 @@ public class SSLContextInitializer {
 	}
 
 	/**
-	 * Sets trusted self-signed certificates used by context.
+	 * Adds trusted self-signed certificate used by context.
 	 * Self-signed certificates cannot be authenticated, so they must be added manually as trusted
-	 * before making a connection.
+	 * before making a connection. They may be many certificates added.
 	 * This is needed to connect to servers that use self-signed certificates by {@link SSLSocket} to make them trusted
 	 * or to vertify clients that use self-signed certificates if {@link SSLServerSocket#getNeedClientAuth()} is true.
 	 * Add only this certificates that you are completly sure are authentic.
-	 * @param certificates List of certicate .cer/.pem files.
-	 * @throws java.security.NoSuchAlgorithmException
+	 * @param alias Unique certificate's alias.
+	 * @param certificateIS Input Stream of certificate (.cer/.pem or similar format).
 	 * @throws java.security.KeyStoreException
-	 * @throws java.io.IOException
 	 * @throws java.security.cert.CertificateException
 	 */
-	public void setCertificates(File[] certificates) throws NoSuchAlgorithmException, KeyStoreException, IOException, CertificateException {
-		String keyStoreType = KeyStore.getDefaultType();
-		KeyStore keyStore = KeyStore.getInstance(keyStoreType);
-		keyStore.load(null, null);
-
-		for (int i = 0; i < certificates.length; i++) {
-			addCertificateToKeystore(keyStore, "ca" + i, certificates[i]);
-		}
-
-		String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
-		TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
-		tmf.init(keyStore);
-
-		trustManagers = tmf.getTrustManagers();
-	}
-
-	private void addCertificateToKeystore(KeyStore keyStore, String alias, File certificate) throws CertificateException, FileNotFoundException, KeyStoreException, IOException {
+	public void addCertificate(String alias, InputStream certificateIS) throws CertificateException, KeyStoreException {
 		CertificateFactory cf = CertificateFactory.getInstance("X.509");
-
-		FileInputStream fis = new FileInputStream(certificate);
-		try {
-			Certificate ca = cf.generateCertificate(fis);
-			keyStore.setCertificateEntry(alias, ca);
-		} finally {
-			fis.close();
-		}
+		Certificate ca = cf.generateCertificate(certificateIS);
+		trustedKeystore.setCertificateEntry(alias, ca);
 	}
 
 	/**
 	 * Initializes context with keystore and/or certificates specified by
-	 * {@link #setKeystore(File, String, String)} and {@link #setCertificates(File[])}.
+	 * {@link #setKeystore(java.io.InputStream, java.lang.String, java.lang.String)} and {@link #addCertificate(java.lang.String, java.io.InputStream)}.
 	 * @param sslContext Context to initialize.
 	 * @throws java.security.KeyManagementException
+	 * @throws java.security.NoSuchAlgorithmException
+	 * @throws java.security.KeyStoreException
 	 */
-	public void initContext(SSLContext sslContext) throws KeyManagementException {
+	public void initContext(SSLContext sslContext) throws KeyManagementException, NoSuchAlgorithmException, KeyStoreException {
+		String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+		TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+		tmf.init(trustedKeystore);
+		TrustManager[] trustManagers = tmf.getTrustManagers();
+
 		sslContext.init(keyManagers, trustManagers, null);
 	}
 

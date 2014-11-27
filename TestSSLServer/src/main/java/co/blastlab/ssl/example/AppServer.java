@@ -4,6 +4,7 @@ import co.blastlab.ssl.SSLContextInitializer;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
@@ -21,36 +22,40 @@ public class AppServer {
 	}
 
 	public void openSocket() throws Exception {
-		ClassLoader classLoader = getClass().getClassLoader();
-		File keystoreFile = new File(classLoader.getResource(KEYSTORE_FILENAME).getFile());
-		File clientCertFile = new File(classLoader.getResource(CLIENT_CERT_FILENAME).getFile());
-
 		SSLContextInitializer sci = new SSLContextInitializer();
-		sci.setKeystore(keystoreFile, KEYSTORE_PASS, KEYSTORE_CERT_PASS);
-		sci.setCertificates(new File[]{clientCertFile});
+
+		ClassLoader classLoader = getClass().getClassLoader();
+
+		try (InputStream keystoreIS = classLoader.getResourceAsStream(KEYSTORE_FILENAME)) {
+			sci.setKeystore(keystoreIS, KEYSTORE_PASS, KEYSTORE_CERT_PASS);
+		}
+
+		try (InputStream certIS = classLoader.getResourceAsStream(CLIENT_CERT_FILENAME)) {
+			sci.addCertificate("clientca", certIS);
+		}
 
 		SSLContext sc = SSLContext.getInstance("SSL");
 		sci.initContext(sc);
 
-		SSLServerSocket server = (SSLServerSocket) sc.getServerSocketFactory().createServerSocket(PORT);
-		server.setNeedClientAuth(true);
-		System.out.println("Listening on port " + PORT);
-
-		SSLSocket socket = (SSLSocket) server.accept();
-		System.out.println("Accepted connection, starting handshake");
-		socket.startHandshake();
-		System.out.println("Handshake completed");
-
-		DataInputStream in = new DataInputStream(socket.getInputStream());
-		DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-
-		System.out.println("Readed message: " + in.readUTF());
-		System.out.println("Writing response");
-		out.writeUTF("Hello client!");
-
-		System.out.println("Closing sockets");
-		socket.close();
-		server.close();
+		try (SSLServerSocket server = (SSLServerSocket) sc.getServerSocketFactory().createServerSocket(PORT)) {
+			server.setNeedClientAuth(true);
+			System.out.println("Listening on port " + PORT);
+			
+			try (SSLSocket socket = (SSLSocket) server.accept()) {
+				System.out.println("Accepted connection, starting handshake");
+				socket.startHandshake();
+				System.out.println("Handshake completed");
+				
+				DataInputStream in = new DataInputStream(socket.getInputStream());
+				DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+				
+				System.out.println("Readed message: " + in.readUTF());
+				System.out.println("Writing response");
+				out.writeUTF("Hello client!");
+				
+				System.out.println("Closing sockets");
+			}
+		}
 	}
 
 }
